@@ -76,6 +76,7 @@ def build_case(scenario, variant, catalog):
         user_request=scenario["user_instruction"],
         actions=actions,
         allowed_toolkits=[catalog[scenario["user_tool"]]["toolkit"]],
+        user_tool=scenario["user_tool"],
         scenario_id=scenario["scenario_id"],
         variant=variant,
         expected_label=expected_label,

@@ -34,6 +34,7 @@ def test_dh001():
     injected = check_case(build_case(scenarios.iloc[0], "injected", catalog), catalog)
     expected = check_case(build_case(scenarios.iloc[0], "expected", catalog), catalog)
     assert [f.rule_id for f in injected] == ["R1"]
+    assert "AmazonGetProductDetails" in injected[0].detail
     assert expected == []
 
 

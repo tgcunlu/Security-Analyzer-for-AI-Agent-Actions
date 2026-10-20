@@ -19,6 +19,7 @@ class Case:
     user_request: str
     actions: list
     allowed_toolkits: list = field(default_factory=list)
+    user_tool: str = ""
     scenario_id: str = ""
     variant: str = ""
     expected_label: str = ""
