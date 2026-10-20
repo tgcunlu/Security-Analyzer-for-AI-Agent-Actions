@@ -24,3 +24,14 @@ class Case:
     expected_label: str = ""
     attack_type: str = ""
     attacker_instruction: str = ""
+
+
+@dataclass
+class Finding:
+    """A security problem that one rule found in one step of an action."""
+
+    rule_id: str
+    issue: str
+    severity: str
+    detail: str
+    step: int = 1
