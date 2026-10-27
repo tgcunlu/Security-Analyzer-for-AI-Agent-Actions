@@ -24,6 +24,7 @@ class Case:
     actions: list
     allowed_toolkits: list = field(default_factory=list)
     forbidden_data: list = field(default_factory=list)
+    allowed_destinations: list = field(default_factory=list)
     user_tool: str = ""
     scenario_id: str = ""
     variant: str = ""
