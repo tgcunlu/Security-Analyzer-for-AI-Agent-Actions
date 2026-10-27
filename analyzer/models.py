@@ -13,12 +13,17 @@ class ToolCall:
 
 @dataclass
 class Case:
-    """A user request together with the action an agent attempted."""
+    """A user request together with the action an agent attempted.
+
+    allowed_toolkits and forbidden_data are optional security restrictions.
+    An empty list means no restriction was given for the case.
+    """
 
     case_id: str
     user_request: str
     actions: list
     allowed_toolkits: list = field(default_factory=list)
+    forbidden_data: list = field(default_factory=list)
     user_tool: str = ""
     scenario_id: str = ""
     variant: str = ""
@@ -29,10 +34,10 @@ class Case:
 
 @dataclass
 class Finding:
-    """A security problem that one rule found in one step of an action."""
+    """The outcome of one security rule for one step (step 0 means the whole case)."""
 
     rule_id: str
     issue: str
-    severity: str
+    outcome: str
     detail: str
     step: int = 1

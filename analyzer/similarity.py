@@ -32,7 +32,7 @@ class SimilaritySearch:
         self.request_matrix = self.vectorizer.transform(request_texts)
         self.attack_matrix = self.vectorizer.transform(attack_texts)
 
-    def search(self, user_request, actions, top_k=5, min_score=0.05):
+    def search(self, user_request, actions, top_k=3, min_score=0.05):
         """Return up to top_k similar scenarios, one per distinct attack, best first."""
         request_vector = self.vectorizer.transform([user_request])
         action_vector = self.vectorizer.transform([action_to_text(actions)])
