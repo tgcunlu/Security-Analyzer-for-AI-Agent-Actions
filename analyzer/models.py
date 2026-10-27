@@ -42,3 +42,15 @@ class Finding:
     outcome: str
     detail: str
     step: int = 1
+
+
+@dataclass
+class LLMAssessment:
+    """The local model's judgement of whether the action serves the user's request.
+
+    alignment is "Aligned", "Misaligned" or "Unknown". error is empty when the model answered correctly.
+    """
+
+    alignment: str
+    reason: str = ""
+    error: str = ""
