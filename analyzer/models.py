@@ -54,3 +54,19 @@ class LLMAssessment:
     alignment: str
     reason: str = ""
     error: str = ""
+
+
+@dataclass
+class AnalysisResult:
+    """The final result for one case (Volere 7b): classification, issues, explanation, review flag."""
+
+    case_id: str
+    classification: str = ""
+    human_review: bool = False
+    issues: list = field(default_factory=list)
+    explanation: str = ""
+    review_reasons: list = field(default_factory=list)
+    findings: list = field(default_factory=list)
+    assessment: object = None
+    related_examples: list = field(default_factory=list)
+    input_problems: list = field(default_factory=list)

@@ -40,7 +40,7 @@ it never executes the proposed actions.
 - [x] Security rules: tool scope, sensitive data, external transfer, action type
 - [x] Input validation
 - [x] Local LLM goal-alignment check with response validation
-- [ ] Decision logic (Authorized / Suspicious / Unauthorized, Human Review Required)
+- [x] Decision logic (Authorized / Suspicious / Unauthorized, Human Review Required)
 - [ ] Streamlit interface and dashboard
 - [ ] Evaluation on prepared cases
 
