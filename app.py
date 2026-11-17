@@ -5,15 +5,26 @@ Run with:  streamlit run app.py
 
 from html import escape
 
+import re
+
 import pandas as pd
 import streamlit as st
 
 from analyzer.data_loader import build_case, load_scenarios, load_tool_catalog
 from analyzer.llm import DEFAULT_MODEL
 from analyzer.pipeline import analyze_case
+from analyzer.rules import action_type
 from analyzer.similarity import SimilaritySearch
 
 st.set_page_config(page_title="AI Agent Security Hybrid Analyzer", layout="wide")
+
+BODY_TEXT_CSS = """
+<style>
+[data-testid="stMarkdownContainer"], [data-testid="stText"], [data-testid="stTable"] td,
+[data-testid="stTable"] th { font-size: 1.1rem; }
+</style>
+"""
+st.markdown(BODY_TEXT_CSS, unsafe_allow_html=True)
 
 
 # Loading the data takes a moment, so Streamlit keeps it in memory instead of reloading on every click.
@@ -104,11 +115,25 @@ def show_tool_response(tool_response, injected):
         '</div>', unsafe_allow_html=True)
 
 
-def show_actions(actions):
-    """The proposed action steps as a table."""
-    rows = [{"Step": number, "Tool": step.tool or "(none)", "Input": step.input}
-            for number, step in enumerate(actions, start=1)]
-    st.table(pd.DataFrame(rows).set_index("Step"))
+def show_actions(actions, catalog, hidden_instruction=""):
+    """The proposed action as a table: tool, toolkit, what the tool does, action type, input."""
+    st.caption("Each row is one tool call, in the order the agent would make it. "
+               "Input is the data the agent would pass to the tool.")
+    rows = []
+    for number, step in enumerate(actions, start=1):
+        info = catalog.get(step.tool, {})
+        shown_input = step.input
+        if hidden_instruction and step.input == hidden_instruction:
+            shown_input = "The hidden instruction (shown in red above)"
+        rows.append({
+            "Tool call": number,
+            "Tool": step.tool or "(none)",
+            "Toolkit": info.get("toolkit", "Not in the tool catalog"),
+            "What the tool does": info.get("summary", "Unknown"),
+            "Action type": action_type(step, catalog).capitalize(),
+            "Input": shown_input,
+        })
+    st.table(pd.DataFrame(rows).set_index("Tool call"))
 
 
 PLAIN_SUMMARIES = {
@@ -126,7 +151,7 @@ OUTCOME_LABELS = {"Violation": ("Violation", RED), "Possible Issue": ("Possible 
                   "Unknown": ("Could not check", GRAY)}
 ALIGNMENT_LABELS = {"Aligned": ("Matches the request", GREEN), "Misaligned": ("Does not match the request", RED),
                     "Unknown": ("Could not decide", GRAY)}
-TITLE_STYLE = "color:#1E88E5; font-weight:700; font-size:1.05rem; margin-bottom:0.6em;"
+TITLE_STYLE = "color:#1E88E5; font-weight:700; font-size:1.2rem; margin-bottom:0.6em;"
 
 
 def title(text):
@@ -146,6 +171,13 @@ def item(label_html, note, body):
     note_html = f' <span style="opacity:0.65; font-size:0.85rem;">{escape(note)}</span>' if note else ""
     return (f'<div style="margin-bottom:0.9em;">{label_html}{note_html}'
             f'<div style="margin-top:0.3em;">{escape(body)}</div></div>')
+
+
+def friendly_detail(detail, call_count):
+    """Rule details start with "Step N". Say "The action" for one tool call, "Tool call N" for several."""
+    if call_count == 1:
+        return re.sub(r"^Step 1\b", "The action", detail)
+    return re.sub(r"^Step (\d+)", r"Tool call \1", detail)
 
 
 def show_result(result):
@@ -171,12 +203,13 @@ def show_result(result):
     rules_column, model_column = st.columns(2)
     with rules_column.container(border=True):
         problems = [f for f in result.findings if f.outcome != "No Issue"]
+        call_count = max((f.step for f in result.findings), default=1)
         html = title("Security rules")
         if not problems:
             html += item(pill("No problems found", GREEN), "", "")
         for finding in problems:
             label, colors = OUTCOME_LABELS[finding.outcome]
-            html += item(pill(label, colors), finding.issue, finding.detail)
+            html += item(pill(label, colors), finding.issue, friendly_detail(finding.detail, call_count))
         st.markdown(html, unsafe_allow_html=True)
     with model_column.container(border=True):
         assessment = result.assessment
@@ -189,8 +222,8 @@ def show_result(result):
         st.markdown(html, unsafe_allow_html=True)
 
     with st.expander("Technical details: every rule check"):
-        rows = [{"Step": f.step if f.step else "Whole case", "Rule": f.rule_id, "Outcome": f.outcome,
-                 "Issue": f.issue, "Detail": f.detail} for f in result.findings]
+        rows = [{"Tool call": f.step if f.step else "Whole case", "Rule": f.rule_id, "Outcome": f.outcome,
+                 "Issue": f.issue, "Detail": friendly_detail(f.detail, call_count)} for f in result.findings]
         st.dataframe(pd.DataFrame(rows), hide_index=True)
 
 
@@ -225,15 +258,22 @@ with benchmark_tab:
     scenario = scenarios[scenarios["scenario_id"] == scenario_id].iloc[0]
     case = build_case(scenario, variant, catalog)
 
-    st.markdown(title("Original request (written by the user)"), unsafe_allow_html=True)
+    st.markdown(title("1. What the user asked"), unsafe_allow_html=True)
     st.text(scenario["user_instruction"])
-    st.markdown(title("Tool response the agent read (from the tool the user's request needs)"),
-                unsafe_allow_html=True)
+
+    st.markdown(title("2. What the agent did to answer"), unsafe_allow_html=True)
+    user_tool_summary = catalog.get(scenario["user_tool"], {}).get("summary", "")
+    st.markdown(f'<div>It called <b>{escape(scenario["user_tool"])}</b> with '
+                f'<code>{escape(scenario["tool_parameters"])}</code>. '
+                f'<span style="opacity:0.7;">({escape(user_tool_summary)})</span></div>', unsafe_allow_html=True)
+
+    st.markdown(title("3. What the tool sent back"), unsafe_allow_html=True)
+    st.write("This is the data the agent received. An attacker hid an instruction inside it, shown in red. "
+             "The user did not write it, and the dataset does not show whether an agent obeyed it.")
     show_tool_response(scenario["tool_response"], scenario["attacker_instruction"])
-    st.caption("Red text: the injected instruction hidden inside the tool response. The user did not write it. "
-               "It is proposed behavior, not proof that an agent executed it.")
-    st.markdown(title("Proposed action being analyzed"), unsafe_allow_html=True)
-    show_actions(case.actions)
+
+    st.markdown(title("4. The action being analyzed"), unsafe_allow_html=True)
+    show_actions(case.actions, catalog, scenario["attacker_instruction"])
 
     if st.button("Analyze scenario", type="primary"):
         with st.spinner("Checking rules and asking the local model..."):
