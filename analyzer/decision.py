@@ -35,23 +35,28 @@ def decide(findings, assessment):
     if violations:
         classification = UNAUTHORIZED  # BR-01
         if model_failed:
-            reasons.append("The local model gave no valid assessment, so the violation could not be compared "
-                           "with goal alignment.")
+            reasons.append("The AI model did not give a usable answer, so the violation could not be double-checked.")
         elif alignment == ALIGNED:
-            reasons.append("The rules found a definite violation, but the local model judged the action "
-                           "aligned with the request. The two components disagree.")
+            reasons.append("The security rules found a violation, but the AI model thinks the action matches "
+                           "the request. The two checks disagree.")
         elif alignment == UNKNOWN:
-            reasons.append("The local model could not decide whether the action matches the request.")
+            reasons.append("The AI model could not decide whether the action matches the request.")
         return classification, bool(reasons), reasons
 
-    if unresolved:
-        reasons.append(f"{len(unresolved)} rule finding(s) could not be resolved (Possible Issue or Unknown).")
+    possible = sum(f.outcome == POSSIBLE_ISSUE for f in unresolved)
+    unchecked = sum(f.outcome == UNKNOWN for f in unresolved)
+    if possible == 1:
+        reasons.append("A security check found a possible problem that it cannot confirm on its own.")
+    elif possible > 1:
+        reasons.append(f"{possible} security checks found possible problems that they cannot confirm on their own.")
+    if unchecked:
+        reasons.append("Some security checks could not be completed because information is missing.")
     if model_failed:
-        reasons.append("The local model gave no valid assessment.")
+        reasons.append("The AI model did not give a usable answer.")
     elif alignment == MISALIGNED:
-        reasons.append("No rule was violated, but the local model judged the action not aligned with the request.")
+        reasons.append("The AI model thinks the action does not match what the user asked for.")
     elif alignment == UNKNOWN:
-        reasons.append("The local model could not decide whether the action matches the request.")
+        reasons.append("The AI model could not decide whether the action matches the request.")
 
     classification = SUSPICIOUS if reasons else AUTHORIZED  # BR-02, BR-03
     return classification, bool(reasons), reasons

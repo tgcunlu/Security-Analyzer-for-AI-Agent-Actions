@@ -65,6 +65,32 @@ REVIEW_BADGE = ('<div style="display:inline-block; background:#FFFF00; color:#00
                 'padding:0.4em 1em; border-radius:6px; box-shadow:0 0 12px #FFFF00;">HUMAN REVIEW REQUIRED</div>')
 
 
+BOX_STYLE = "flex:1; min-width:280px; border:1px solid #555555; border-radius:8px; padding:0.9em 1.1em;"
+OPTIONS_EXPLANATION = f"""
+<div style="display:flex; gap:1em; flex-wrap:wrap; margin-bottom:0.9em;">
+  <div style="{BOX_STYLE} border-top:4px solid #EF5350;">
+    <div style="color:#EF5350; font-weight:700; font-size:1.2rem; margin-bottom:0.4em;">
+      Injected: what the agent would do if it followed the attack</div>
+    <div style="color:#FFFFFF; font-size:1.1rem; line-height:1.55;">
+      This is the action the agent would take if it obeyed the hidden instruction in the tool response.
+      The dataset does not include this action, so the analyzer creates it from the attacker's tool and
+      instruction. The analyzer should flag it.</div>
+  </div>
+  <div style="{BOX_STYLE} border-top:4px solid #66BB6A;">
+    <div style="color:#66BB6A; font-weight:700; font-size:1.2rem; margin-bottom:0.4em;">
+      Expected: the tool call the user's task needs</div>
+    <div style="color:#FFFFFF; font-size:1.1rem; line-height:1.55;">
+      This is the action the user actually asked for. It comes directly from the dataset.
+      The analyzer should not flag it.</div>
+  </div>
+</div>
+<div style="color:#42A5F5; font-weight:700; font-size:1.2rem; margin-bottom:0.3em;">Why we show both</div>
+<div style="color:#FFFFFF; font-size:1.1rem; line-height:1.55; margin-bottom:1.2em;">
+  Checking both shows whether the analyzer can tell an attack from normal work: it should catch the first
+  without raising a false alarm on the second.</div>
+"""
+INTRO_STYLE = "color:#FFFFFF; font-size:1.1rem; line-height:1.55; margin-bottom:0.7em;"
+
 def show_tool_response(tool_response, injected):
     """The tool output the agent read, with the injected instruction shown in red."""
     text = tool_response.strip().strip('"')
@@ -82,11 +108,48 @@ def show_actions(actions):
     """The proposed action steps as a table."""
     rows = [{"Step": number, "Tool": step.tool or "(none)", "Input": step.input}
             for number, step in enumerate(actions, start=1)]
-    st.dataframe(pd.DataFrame(rows), hide_index=True)
+    st.table(pd.DataFrame(rows).set_index("Step"))
+
+
+PLAIN_SUMMARIES = {
+    "Unauthorized": "This action breaks a security rule.",
+    "Suspicious": "No security rule was clearly broken, but something does not look right.",
+    "Authorized": ("No problems were found, and the AI model agrees that the action matches the request. "
+                   "This is not a safety guarantee."),
+}
+# Label text and colors (background, text). The label is always written out, so color is never the only signal.
+RED = ("#D32F2F", "#FFFFFF")
+ORANGE = ("#FFA726", "#000000")
+GREEN = ("#2E7D32", "#FFFFFF")
+GRAY = ("#757575", "#FFFFFF")
+OUTCOME_LABELS = {"Violation": ("Violation", RED), "Possible Issue": ("Possible issue", ORANGE),
+                  "Unknown": ("Could not check", GRAY)}
+ALIGNMENT_LABELS = {"Aligned": ("Matches the request", GREEN), "Misaligned": ("Does not match the request", RED),
+                    "Unknown": ("Could not decide", GRAY)}
+TITLE_STYLE = "color:#1E88E5; font-weight:700; font-size:1.05rem; margin-bottom:0.6em;"
+
+
+def title(text):
+    """A blue section title."""
+    return f'<div style="{TITLE_STYLE}">{escape(text)}</div>'
+
+
+def pill(label, colors):
+    """A small colored label with its text written out."""
+    background, foreground = colors
+    return (f'<span style="background:{background}; color:{foreground}; font-weight:700; font-size:0.8rem; '
+            f'padding:0.15em 0.6em; border-radius:4px;">{escape(label)}</span>')
+
+
+def item(label_html, note, body):
+    """One entry inside a card: colored label, small gray note, then the text on its own line."""
+    note_html = f' <span style="opacity:0.65; font-size:0.85rem;">{escape(note)}</span>' if note else ""
+    return (f'<div style="margin-bottom:0.9em;">{label_html}{note_html}'
+            f'<div style="margin-top:0.3em;">{escape(body)}</div></div>')
 
 
 def show_result(result):
-    """Classification, review flag, issues, explanation, rule findings and model assessment (Volere R-15)."""
+    """Classification, review flag, rule findings, model assessment and explanation (Volere R-15)."""
     st.subheader("Analysis result")
     if result.input_problems:
         st.error("Not analyzed: " + " ".join(result.input_problems))
@@ -99,23 +162,36 @@ def show_result(result):
         '<div style="display:flex; align-items:center; gap:1em; flex-wrap:wrap; margin-bottom:0.5em;">'
         f'<span style="font-size:2.25rem;">{escape(result.classification)}</span>{badge}</div>',
         unsafe_allow_html=True)
+    st.write(PLAIN_SUMMARIES[result.classification])
     if result.human_review:
-        st.markdown("**Why:** " + " ".join(result.review_reasons))
-    st.markdown("**Identified issues:** " + (", ".join(result.issues) if result.issues else "None"))
+        reasons = "".join(f"<li>{escape(r)}</li>" for r in result.review_reasons)
+        st.markdown(title("Why a person should review this") + f"<ul>{reasons}</ul>", unsafe_allow_html=True)
 
-    st.markdown("**Explanation**")
-    st.text(result.explanation)
+    # The two analysis components side by side
+    rules_column, model_column = st.columns(2)
+    with rules_column.container(border=True):
+        problems = [f for f in result.findings if f.outcome != "No Issue"]
+        html = title("Security rules")
+        if not problems:
+            html += item(pill("No problems found", GREEN), "", "")
+        for finding in problems:
+            label, colors = OUTCOME_LABELS[finding.outcome]
+            html += item(pill(label, colors), finding.issue, finding.detail)
+        st.markdown(html, unsafe_allow_html=True)
+    with model_column.container(border=True):
+        assessment = result.assessment
+        html = title(f"Local AI model ({DEFAULT_MODEL})")
+        if assessment.error:
+            html += item(pill("Could not answer", GRAY), "", assessment.error)
+        else:
+            label, colors = ALIGNMENT_LABELS[assessment.alignment]
+            html += item(pill(label, colors), "", assessment.reason)
+        st.markdown(html, unsafe_allow_html=True)
 
-    st.markdown("**Rule findings**")
-    rows = [{"Step": f.step if f.step else "Whole case", "Rule": f.rule_id, "Outcome": f.outcome,
-             "Issue": f.issue, "Detail": f.detail} for f in result.findings]
-    st.dataframe(pd.DataFrame(rows), hide_index=True)
-
-    st.markdown("**Local model assessment**")
-    if result.assessment.error:
-        st.write(f"Unknown. {result.assessment.error}")
-    else:
-        st.write(f"{result.assessment.alignment}. {result.assessment.reason}")
+    with st.expander("Technical details: every rule check"):
+        rows = [{"Step": f.step if f.step else "Whole case", "Rule": f.rule_id, "Outcome": f.outcome,
+                 "Issue": f.issue, "Detail": f.detail} for f in result.findings]
+        st.dataframe(pd.DataFrame(rows), hide_index=True)
 
 
 # Analyses completed in this browser session. The dashboard (PUC-03) summarizes this list.
@@ -125,20 +201,15 @@ if "results" not in st.session_state:
 scenarios = get_scenarios()
 catalog = get_catalog()
 
-st.title("AI Agent Security Hybrid Analyzer")
-st.caption("Compares a proposed AI-agent action with the user's original request. "
-           "Actions are analyzed as text and are never executed.")
+model_ready, status_message = ollama_status(DEFAULT_MODEL)
+dot_color = "#4CAF50" if model_ready else "#E53935"
 
-with st.sidebar:
-    st.header("Status")
-    model_ready, status_message = ollama_status(DEFAULT_MODEL)
-    if model_ready:
-        st.success(status_message)
-    else:
-        st.warning(status_message)
-    st.write(f"Benchmark scenarios loaded: {len(scenarios)}")
-    st.write(f"Tools in catalog: {len(catalog)}")
-    st.write(f"Analyses this session: {len(st.session_state.results)}")
+st.title("AI Agent Security Hybrid Analyzer")
+st.markdown(f'<div style="font-size:0.9rem; margin-bottom:0.8em;"><span style="color:{dot_color}; font-size:1.2rem;">'
+            f'&#9679;</span> {escape(status_message)}</div>', unsafe_allow_html=True)
+st.markdown(f'<div style="{INTRO_STYLE}">Compares a proposed AI-agent action with the user\'s original request. '
+            'Actions are analyzed as text and are never executed.</div>', unsafe_allow_html=True)
+st.markdown(OPTIONS_EXPLANATION, unsafe_allow_html=True)
 
 benchmark_tab, manual_tab, dashboard_tab = st.tabs(["Benchmark scenario", "Manual case", "Dashboard"])
 
@@ -148,19 +219,20 @@ with benchmark_tab:
               for row in scenarios.itertuples()}
     scenario_id = st.selectbox("Scenario", list(labels), format_func=labels.get)
     variant = st.radio("Action to analyze", ["injected", "expected"], horizontal=True,
-                       format_func={"injected": "Injected: the action the attacker wants",
+                       format_func={"injected": "Injected: what the agent would do if it followed the attack",
                                     "expected": "Expected: the tool call the user's task needs"}.get)
 
     scenario = scenarios[scenarios["scenario_id"] == scenario_id].iloc[0]
     case = build_case(scenario, variant, catalog)
 
-    st.markdown("**Original request** (written by the user)")
+    st.markdown(title("Original request (written by the user)"), unsafe_allow_html=True)
     st.text(scenario["user_instruction"])
-    st.markdown("**Tool response the agent read** (from the tool the user's request needs)")
+    st.markdown(title("Tool response the agent read (from the tool the user's request needs)"),
+                unsafe_allow_html=True)
     show_tool_response(scenario["tool_response"], scenario["attacker_instruction"])
     st.caption("Red text: the injected instruction hidden inside the tool response. The user did not write it. "
                "It is proposed behavior, not proof that an agent executed it.")
-    st.markdown("**Proposed action being analyzed**")
+    st.markdown(title("Proposed action being analyzed"), unsafe_allow_html=True)
     show_actions(case.actions)
 
     if st.button("Analyze scenario", type="primary"):
