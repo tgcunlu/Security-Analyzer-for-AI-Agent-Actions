@@ -75,7 +75,7 @@ def test_model_failure_keeps_findings_and_flags_review():
     result = analyze_case(DH001_INJECTED, catalog, llm_client=FakeClient(error=ConnectionError("Ollama is off")))
     assert result.classification == UNAUTHORIZED
     assert result.human_review is True
-    assert [f.rule_id for f in result.findings if f.outcome == "Violation"] == ["RULE-TOOL"]
+    assert [f.rule_id for f in result.findings if f.outcome == "Violation"] == ["RULE-TOOL", "RULE-ACTION"]
     assert "Ollama is off" in result.explanation
 
 
