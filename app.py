@@ -224,7 +224,7 @@ def show_result(result):
     with st.expander("Technical details: every rule check"):
         rows = [{"Tool call": f.step if f.step else "Whole case", "Rule": f.rule_id, "Outcome": f.outcome,
                  "Issue": f.issue, "Detail": friendly_detail(f.detail, call_count)} for f in result.findings]
-        st.dataframe(pd.DataFrame(rows), hide_index=True)
+        st.table(pd.DataFrame(rows).set_index("Tool call"))
 
 
 # Analyses completed in this browser session. The dashboard (PUC-03) summarizes this list.
