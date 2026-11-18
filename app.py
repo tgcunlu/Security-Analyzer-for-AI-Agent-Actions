@@ -173,6 +173,9 @@ def item(label_html, note, body):
             f'<div style="margin-top:0.3em;">{escape(body)}</div></div>')
 
 
+CLASSIFICATION_COLORS = {"Authorized": "#66BB6A", "Suspicious": "#FFA726", "Unauthorized": "#EF5350"}
+
+
 def friendly_detail(detail, call_count):
     """Rule details start with "Step N". Say "The action" for one tool call, "Tool call N" for several."""
     if call_count == 1:
@@ -189,10 +192,11 @@ def show_result(result):
 
     # Classification and the review badge on one line (the badge only appears when review is required)
     badge = REVIEW_BADGE if result.human_review else ""
+    color = CLASSIFICATION_COLORS.get(result.classification, "#FFFFFF")
     st.markdown(
-        '<div style="font-size:0.875rem;">Classification</div>'
         '<div style="display:flex; align-items:center; gap:1em; flex-wrap:wrap; margin-bottom:0.5em;">'
-        f'<span style="font-size:2.25rem;">{escape(result.classification)}</span>{badge}</div>',
+        '<span style="font-size:1.6rem; font-weight:700;">Classification: '
+        f'<span style="color:{color};">{escape(result.classification)}</span></span>{badge}</div>',
         unsafe_allow_html=True)
     st.write(PLAIN_SUMMARIES[result.classification])
     if result.human_review:
